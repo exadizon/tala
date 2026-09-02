@@ -15,6 +15,20 @@
       "when": 1788331376439,
       "tag": "0001_medical_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788332717944,
+      "tag": "0002_curved_marvel_boy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788334365337,
+      "tag": "0003_fearless_sugar_man",
+      "breakpoints": true
     }
   ]
 }
