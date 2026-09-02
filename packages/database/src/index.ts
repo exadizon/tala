@@ -11,9 +11,4 @@ export const db = drizzle({ client: pool, schema });
 
 export { schema };
 
-export type {
-  InferSelectModel,
-  InferInsertModel,
-} from "drizzle-orm/pg-core";
-
 export { items, collections, itemCollections, favorites } from "./schema";

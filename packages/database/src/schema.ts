@@ -31,6 +31,7 @@ export const collections = pgTable("collections", {
   description: text(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const itemCollections = pgTable(
