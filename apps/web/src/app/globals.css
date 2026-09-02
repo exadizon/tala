@@ -1,26 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500;1,6..72,600&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f5f2eb;
+  --panel: #ebe5d8;
+  --paper: #fcfbf8;
+  --paper-hover: #ffffff;
+  --ink: #1c201d;
+  --muted: #5e665d;
+  --faint: #d4cdc0;
+  --faint-strong: #b8b0a0;
+  --accent: #a37230;
+  --accent-hover: #8f6125;
+  --accent-soft: #f2e8d3;
+  --accent-contrast: #ffffff;
+  --accent-sage: #50684d;
+  --accent-sage-soft: #e0eadf;
+  --accent-blue: #3e6284;
+  --accent-blue-soft: #dbe7f2;
+  --shadow-card: 0 2px 8px -1px rgba(45, 40, 30, 0.06), 0 1px 3px 0 rgba(45, 40, 30, 0.04);
+  --shadow-lift: 0 14px 32px -4px rgba(45, 40, 30, 0.12), 0 4px 12px -2px rgba(45, 40, 30, 0.06);
+
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'DM Mono', monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root[data-theme='dark'],
+.dark {
+  --bg: #121513;
+  --panel: #191e1a;
+  --paper: #212723;
+  --paper-hover: #29312b;
+  --ink: #f4f1ea;
+  --muted: #a8b2a5;
+  --faint: #323b34;
+  --faint-strong: #49544c;
+  --accent: #e5b869;
+  --accent-hover: #f3c77c;
+  --accent-soft: #352d1d;
+  --accent-contrast: #141714;
+  --accent-sage: #97be90;
+  --accent-sage-soft: #213020;
+  --accent-blue: #8bb4dc;
+  --accent-blue-soft: #1e2b38;
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.45);
+  --shadow-lift: 0 18px 40px -6px rgba(0, 0, 0, 0.65), 0 6px 16px -2px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme='light']) {
+    --bg: #121513;
+    --panel: #191e1a;
+    --paper: #212723;
+    --paper-hover: #29312b;
+    --ink: #f4f1ea;
+    --muted: #a8b2a5;
+    --faint: #323b34;
+    --faint-strong: #49544c;
+    --accent: #e5b869;
+    --accent-hover: #f3c77c;
+    --accent-soft: #352d1d;
+    --accent-contrast: #141714;
+    --accent-sage: #97be90;
+    --accent-sage-soft: #213020;
+    --accent-blue: #8bb4dc;
+    --accent-blue-soft: #1e2b38;
+    --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.45);
+    --shadow-lift: 0 18px 40px -6px rgba(0, 0, 0, 0.65), 0 6px 16px -2px rgba(0, 0, 0, 0.45);
   }
 }
 
+* {
+  box-sizing: border-box;
+  border-color: var(--faint);
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Custom scrollbars that feel subtle and native */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--faint);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faint-strong);
+}
+
+/* Typography utilities */
+.font-serif {
+  font-family: var(--font-serif);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Tactile inputs and buttons */
+input, textarea, select {
+  font-family: inherit;
+  color: var(--ink);
+  background-color: var(--paper);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Micro animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 2s infinite ease-in-out;
 }

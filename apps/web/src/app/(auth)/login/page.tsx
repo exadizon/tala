@@ -4,11 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
+import { TalaStarIcon, TalaWordmark } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,41 +28,55 @@ export default function LoginPage() {
       });
 
       if (result.error) {
-        setError(result.error.message || "Invalid email or password");
+        setError(result.error.message || "Invalid email or password. Please check your credentials.");
       } else {
         router.push("/library");
       }
-    } catch (err) {
-      setError("An error occurred. Please try again.");
+    } catch {
+      setError("Unable to connect. Please check your internet connection and try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md space-y-8">
-        <div>
-          <h1 className="text-center text-3xl font-bold tracking-tight text-gray-900">
-            Tala
-          </h1>
-          <h2 className="mt-2 text-center text-sm text-gray-600">
-            Sign in to your account
-          </h2>
-        </div>
+    <div className="min-h-screen bg-[var(--bg)] flex flex-col justify-between p-4 sm:p-6 transition-colors">
+      {/* Top Bar */}
+      <header className="w-full max-w-5xl mx-auto flex items-center justify-between py-2">
+        <TalaWordmark href="/" size="sm" />
+        <ThemeToggle compact />
+      </header>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
-              {error}
+      {/* Main Form Box */}
+      <div className="w-full max-w-md mx-auto my-auto py-8">
+        <div className="rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-6 sm:p-10 shadow-lift relative overflow-hidden transition-all">
+          {/* Subtle top star accent bar */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-60" />
+
+          <div className="text-center mb-8 space-y-2">
+            <div className="inline-flex p-2.5 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] mb-2 shadow-2xs">
+              <TalaStarIcon className="w-6 h-6" glow />
             </div>
-          )}
+            <h1 className="font-serif text-2xl sm:text-3xl font-normal text-[var(--ink)] tracking-tight">
+              Enter your sanctuary
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] font-sans">
+              Sign in to access your collected readings and notes
+            </p>
+          </div>
 
-          <div className="space-y-4">
-            <div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="rounded-lg border border-red-300 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-300 font-sans animate-fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]"
               >
                 Email address
               </label>
@@ -70,51 +88,85 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                placeholder="you@example.com"
+                className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/50 focus:border-[var(--accent)] transition-all"
+                placeholder="reader@sanctuary.com"
               />
             </div>
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                placeholder="••••••••"
-              />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="password"
+                  className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]"
+                >
+                  Password
+                </label>
+              </div>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3.5 py-2.5 pr-10 text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/50 focus:border-[var(--accent)] transition-all font-sans"
+                  placeholder="••••••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[var(--muted)] hover:text-[var(--ink)] transition-colors cursor-pointer"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
-          >
-            {isLoading ? "Signing in..." : "Sign in"}
-          </button>
-
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Don&apos;t have an account?{" "}
-            <Link
-              href="/signup"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-[var(--accent-contrast)] shadow-sm hover:opacity-95 active:scale-[0.99] disabled:opacity-50 transition-all cursor-pointer"
             >
-              Sign up
-            </Link>
-          </p>
-        </form>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Opening vault...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+
+            <div className="pt-4 text-center border-t border-[var(--faint)] mt-6">
+              <p className="text-xs text-[var(--muted)]">
+                Don&apos;t have an account yet?{" "}
+                <Link
+                  href="/signup"
+                  className="font-medium text-[var(--accent)] hover:underline ml-1"
+                >
+                  Create one now
+                </Link>
+              </p>
+            </div>
+          </form>
+        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="text-center py-4 text-xs font-mono text-[var(--muted)]">
+        <span>Tala &bull; All captured moments preserved</span>
+      </footer>
     </div>
   );
 }
