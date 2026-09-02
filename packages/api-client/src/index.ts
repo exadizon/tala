@@ -1,7 +1,12 @@
 export * from "@tala/types";
 
+declare const process: {
+  env: Record<string, string | undefined>;
+};
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "/api"}${path}`, {
+  const baseUrl = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || "/api";
+  const response = await fetch(`${baseUrl}${path}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
