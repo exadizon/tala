@@ -1,4 +1,4 @@
-export * from "./types";
+export * from "@tala/types";
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "/api"}${path}`, {
