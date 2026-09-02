@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
 import { db } from "@tala/database";
-import { items } from "@tala/database/src/schema";
+import { items, itemCollections } from "@tala/database/src/schema";
 import { eq, desc, like, or, and, isNull } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
-    let whereConditions = [
+    const whereConditions = [
       eq(items.userId, session.user.id),
       isNull(items.deletedAt),
     ];
@@ -34,13 +34,47 @@ export async function GET(request: NextRequest) {
       whereConditions.push(eq(items.type, type));
     }
 
-    const results = await db
-      .select()
-      .from(items)
-      .where(and(...whereConditions))
-      .orderBy(desc(items.createdAt))
-      .limit(limit)
-      .offset(offset);
+    let results;
+
+    if (collectionId) {
+      results = await db
+        .select({
+          id: items.id,
+          userId: items.userId,
+          type: items.type,
+          title: items.title,
+          url: items.url,
+          content: items.content,
+          note: items.note,
+          sourceUrl: items.sourceUrl,
+          sourceDomain: items.sourceDomain,
+          author: items.author,
+          imageUrl: items.imageUrl,
+          thumbnailUrl: items.thumbnailUrl,
+          createdAt: items.createdAt,
+          updatedAt: items.updatedAt,
+          deletedAt: items.deletedAt,
+        })
+        .from(items)
+        .innerJoin(itemCollections, eq(items.id, itemCollections.itemId))
+        .where(
+          and(
+            ...whereConditions,
+            eq(itemCollections.collectionId, collectionId)
+          )
+        )
+        .orderBy(desc(items.createdAt))
+        .limit(limit)
+        .offset(offset);
+    } else {
+      results = await db
+        .select()
+        .from(items)
+        .where(and(...whereConditions))
+        .orderBy(desc(items.createdAt))
+        .limit(limit)
+        .offset(offset);
+    }
 
     return NextResponse.json({ items: results });
   } catch (error) {
@@ -57,7 +91,7 @@ export async function POST(request: NextRequest) {
     const session = await requireSession(request);
     const body = await request.json();
 
-    const { type, title, url, content, note, sourceUrl, sourceDomain, author, imageUrl, thumbnailUrl } = body;
+    const { type, title, url, content, note, sourceUrl, sourceDomain, author, imageUrl, thumbnailUrl, collectionId } = body;
 
     if (!type) {
       return NextResponse.json(
@@ -82,6 +116,13 @@ export async function POST(request: NextRequest) {
         thumbnailUrl,
       })
       .returning();
+      
+    if (collectionId && newItem) {
+      await db.insert(itemCollections).values({
+        itemId: newItem.id,
+        collectionId: collectionId,
+      });
+    }
 
     return NextResponse.json({ item: newItem }, { status: 201 });
   } catch (error) {

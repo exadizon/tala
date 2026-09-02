@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { TalaStarIcon } from "@/components/Logo";
 import {
   Folder,
@@ -100,17 +101,17 @@ export default function CollectionsPage() {
 
     try {
       const response = await fetch(`/api/collections/${editingCollection.id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: editName.trim(),
-          description: editDescription.trim() || undefined,
+          description: editDescription.trim() || null,
         }),
       });
 
       if (response.ok) {
-        await fetchCollections();
         setEditingCollection(null);
+        await fetchCollections();
       }
     } catch (error) {
       console.error("Error updating collection:", error);
@@ -119,33 +120,39 @@ export default function CollectionsPage() {
     }
   };
 
-  const handleDelete = async (id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!confirm("Are you sure you want to remove this collection? Items inside will not be deleted.")) return;
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this collection? Items inside will not be deleted.")) return;
 
     try {
-      await fetch(`/api/collections/${id}`, { method: "DELETE" });
-      setCollections((prev) => prev.filter((c) => c.id !== id));
+      const response = await fetch(`/api/collections/${id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        await fetchCollections();
+      }
     } catch (error) {
       console.error("Error deleting collection:", error);
     }
   };
 
-  const openEdit = (col: Collection, e?: React.MouseEvent) => {
-    e?.stopPropagation();
+  const openEdit = (col: Collection, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setEditingCollection(col);
     setEditName(col.name);
     setEditDescription(col.description || "");
   };
 
-  const formatDate = (dateValue: string | Date) => {
+  const formatDate = (dateString: string | Date) => {
     try {
-      const d = new Date(dateValue);
-      return d.toLocaleDateString("en-US", {
+      return new Intl.DateTimeFormat("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
-      });
+      }).format(new Date(dateString));
     } catch {
       return "";
     }
@@ -247,9 +254,9 @@ export default function CollectionsPage() {
             const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
 
             return (
-              <div
+              <Link
                 key={col.id}
-                onClick={() => openEdit(col)}
+                href={`/collections/${col.id}`}
                 className="group relative rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-5 flex flex-col justify-between hover:border-[var(--faint-strong)] hover:shadow-card transition-all cursor-pointer overflow-hidden"
               >
                 <div>
@@ -298,7 +305,7 @@ export default function CollectionsPage() {
                     Vault
                   </span>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -340,34 +347,34 @@ export default function CollectionsPage() {
                   placeholder="e.g. Architecture & Design, Essays, Tech..."
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Description (Optional)
+                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                  <span>Description</span>
+                  <span className="opacity-50">Optional</span>
                 </label>
                 <textarea
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] p-3 text-xs sm:text-sm text-[var(--ink)] focus:border-[var(--accent)] resize-none"
+                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)] resize-none"
                   placeholder="What belongs in this collection?"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--faint)]">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsCreating(false)}
-                  className="px-4 py-2 rounded-lg border border-[var(--faint)] bg-[var(--paper)] text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting || !newName.trim()}
-                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-medium hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
+                  disabled={!newName.trim() || isSubmitting}
+                  className="inline-flex items-center justify-center min-w-[100px] px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-sm font-medium hover:opacity-95 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
                 >
-                  {isSubmitting ? "Creating..." : "Create Collection"}
+                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create"}
                 </button>
               </div>
             </form>
@@ -385,7 +392,7 @@ export default function CollectionsPage() {
                   Edit Vault
                 </span>
                 <h2 className="font-serif text-lg font-medium text-[var(--ink)]">
-                  Collection Settings
+                  {editingCollection.name}
                 </h2>
               </div>
               <button
@@ -399,56 +406,44 @@ export default function CollectionsPage() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Name
+                  Collection Name
                 </label>
                 <input
                   type="text"
                   required
+                  autoFocus
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)]"
-                  placeholder="Collection name"
                 />
               </div>
-
               <div className="space-y-1">
-                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Description
+                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] flex items-center justify-between">
+                  <span>Description</span>
+                  <span className="opacity-50">Optional</span>
                 </label>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] p-3 text-xs sm:text-sm text-[var(--ink)] focus:border-[var(--accent)] resize-none"
-                  placeholder="Description..."
+                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)] resize-none"
                 />
               </div>
-            </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-[var(--faint)]">
-              <button
-                type="button"
-                onClick={() => handleDelete(editingCollection.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
-              >
-                Delete
-              </button>
-
-              <div className="flex items-center gap-2">
+              <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingCollection(null)}
-                  className="px-4 py-2 rounded-lg border border-[var(--faint)] bg-[var(--paper)] text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
                   onClick={handleSaveEdit}
-                  disabled={isSavingEdit || !editName.trim()}
-                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-medium hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
+                  disabled={!editName.trim() || isSavingEdit || (editName === editingCollection.name && editDescription === (editingCollection.description || ""))}
+                  className="inline-flex items-center justify-center min-w-[100px] px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-sm font-medium hover:opacity-95 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
                 >
-                  {isSavingEdit ? "Saving..." : "Save Changes"}
+                  {isSavingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
                 </button>
               </div>
             </div>

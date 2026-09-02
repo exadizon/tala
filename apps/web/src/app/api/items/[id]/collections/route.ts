@@ -1,76 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
 import { db } from "@tala/database";
-import { itemCollections, collections, items } from "@tala/database/src/schema";
-import { eq, and } from "drizzle-orm";
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await requireSession(request);
-    const { id } = await params;
-
-    const results = await db
-      .select({
-        collectionId: itemCollections.collectionId,
-        collection: collections,
-      })
-      .from(itemCollections)
-      .innerJoin(collections, eq(itemCollections.collectionId, collections.id))
-      .where(
-        and(
-          eq(itemCollections.itemId, id),
-          eq(collections.userId, session.user.id)
-        )
-      );
-
-    return NextResponse.json({ collections: results });
-  } catch (error) {
-    console.error("Error fetching item collections:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch item collections" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await requireSession(request);
-    const { id } = await params;
-    const body = await request.json();
-
-    const { collectionId } = body;
-
-    if (!collectionId) {
-      return NextResponse.json(
-        { error: "Collection ID is required" },
-        { status: 400 }
-      );
-    }
-
-    const [newItemCollection] = await db
-      .insert(itemCollections)
-      .values({
-        itemId: id,
-        collectionId,
-      })
-      .returning();
-
-    return NextResponse.json({ itemCollection: newItemCollection }, { status: 201 });
-  } catch (error) {
-    console.error("Error adding item to collection:", error);
-    return NextResponse.json(
-      { error: "Failed to add item to collection" },
-      { status: 500 }
-    );
-  }
-}
+import { items, itemCollections, collections } from "@tala/database/src/schema";
+import { eq, and, isNull } from "drizzle-orm";
 
 export async function DELETE(
   request: NextRequest,
@@ -78,22 +10,43 @@ export async function DELETE(
 ) {
   try {
     const session = await requireSession(request);
-    const { id } = await params;
+    const { id: itemId } = await params;
     const { searchParams } = new URL(request.url);
     const collectionId = searchParams.get("collectionId");
 
     if (!collectionId) {
       return NextResponse.json(
-        { error: "Collection ID is required" },
+        { error: "collectionId is required" },
         { status: 400 }
       );
+    }
+
+    // Verify ownership of the item and collection
+    const [item] = await db
+      .select({ id: items.id })
+      .from(items)
+      .where(and(eq(items.id, itemId), eq(items.userId, session.user.id)))
+      .limit(1);
+
+    if (!item) {
+      return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    }
+
+    const [collection] = await db
+      .select({ id: collections.id })
+      .from(collections)
+      .where(and(eq(collections.id, collectionId), eq(collections.userId, session.user.id)))
+      .limit(1);
+
+    if (!collection) {
+      return NextResponse.json({ error: "Collection not found" }, { status: 404 });
     }
 
     await db
       .delete(itemCollections)
       .where(
         and(
-          eq(itemCollections.itemId, id),
+          eq(itemCollections.itemId, itemId),
           eq(itemCollections.collectionId, collectionId)
         )
       );
