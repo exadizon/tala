@@ -7,7 +7,13 @@ export const metadata: Metadata = {
   title: "Tala — Personal Knowledge Sanctuary",
   description: "A calm, luminous haven for your captured thoughts, bookmarks, readings, and reflections.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: [
+      { url: "/apple-icon.svg", type: "image/svg+xml" },
+    ],
   },
 };
 

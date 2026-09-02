@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <rect width="180" height="180" rx="40" fill="#121513"/>
+  <rect x="2" y="2" width="176" height="176" rx="38" fill="none" stroke="#a37230" stroke-opacity="0.3" stroke-width="4"/>
+  <!-- 8-pointed morning star in radiant gold -->
+  <path d="M90 25L106 72L155 85L106 98L90 145L74 98L25 85L74 72L90 25Z" fill="#e5b869"/>
+  <!-- Center facet -->
+  <circle cx="90" cy="85" r="10" fill="#121513"/>
+</svg>
