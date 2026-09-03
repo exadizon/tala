@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { TalaStarIcon } from "@/components/Logo";
 import { TagInput } from "@/components/TagInput";
 import {
+  Sparkles,
   ArrowLeft,
   Globe,
   FileText,
@@ -52,6 +53,9 @@ export default function ItemReaderPage({
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // AI summary state
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   
   // Edit State
   const [editTitle, setEditTitle] = useState("");
@@ -107,6 +111,27 @@ export default function ItemReaderPage({
       console.error("Error updating item:", error);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleGenerateSummary = async () => {
+    if (!item || isGeneratingSummary) return;
+    setIsGeneratingSummary(true);
+    try {
+      const res = await fetch(`/api/ai/summarize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      if (res.ok) {
+        const { summary, savedToNote } = await res.json();
+        if (savedToNote) fetchItem();
+        // optionally update purely localized state for the returned summary
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -302,19 +327,38 @@ export default function ItemReaderPage({
             </figure>
           )}
 
+          {/* AI Summarize Block */}
+          {!item.note && item.content && item.content.length > 100 && (
+             <div onClick={handleGenerateSummary} className={`border-dashed border-[2px] border-[var(--faint)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]/20 transition-all cursor-pointer rounded-2xl p-5 flex items-center justify-between group ${isGeneratingSummary ? 'opacity-50 pointer-events-none' : ''}`}>
+               <div className="flex items-center gap-4">
+                 <div className="w-10 h-10 rounded-xl bg-[var(--panel)] group-hover:bg-[var(--bg)] flex items-center justify-center border border-[var(--faint)]">
+                    {isGeneratingSummary ? <Loader2 className="w-5 h-5 text-[var(--accent)] animate-spin" /> : <Sparkles className="w-5 h-5 text-[var(--muted)] group-hover:text-[var(--accent)] transition-colors" />}
+                 </div>
+                 <div>
+                   <h4 className="text-sm font-medium text-[var(--ink)]">AI Summary</h4>
+                   <p className="text-xs text-[var(--muted)]">Generate a quick reading recap</p>
+                 </div>
+               </div>
+               {!isGeneratingSummary && <ArrowUpRight className="w-4 h-4 text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />}
+             </div>
+          )}
+
           {/* User's Note / Abstract */}
           {item.note && (
-             <div className="bg-[var(--accent-soft)]/30 border border-[var(--accent)]/10 text-[var(--ink)] p-5 sm:p-6 rounded-2xl text-sm sm:text-base font-sans leading-relaxed">
-               <div className="flex items-center gap-2 mb-2 text-[var(--accent)] font-medium text-xs font-mono uppercase tracking-wider">
-                 <Bookmark className="w-3.5 h-3.5" />
-                 Reflection
+             <div className="bg-[var(--accent-soft)]/30 border border-[var(--accent)]/10 text-[var(--ink)] p-5 sm:p-6 rounded-2xl text-sm sm:text-base font-sans leading-relaxed flex items-start gap-3">
+               <div>
+                 <div className="flex items-center gap-2 mb-2 text-[var(--accent)] font-medium text-xs font-mono uppercase tracking-wider mt-1">
+                   {item.note.length > 200 && <Sparkles className="w-3.5 h-3.5" />}
+                   {item.note.length <= 200 && <Bookmark className="w-3.5 h-3.5" />}
+                   {(item.note.includes("Summary") || item.note.length > 200) ? "Summary Reflection" : "Reflection"}
+                 </div>
+                 {item.note}
                </div>
-               {item.note}
              </div>
           )}
 
           {/* Full content Reader */}
-          <div className="prose prose-sm sm:prose-base dark:prose-invert prose-p:font-serif prose-p:leading-relaxed prose-headings:font-serif mx-auto max-w-none text-[var(--ink)] pb-12">
+          <div className="prose prose-sm sm:prose-base dark:prose-invert prose-p:font-serif prose-p:leading-relaxed prose-headings:font-serif mx-auto max-w-none text-[var(--ink)] pb-12 mt-6">
             {item.content ? (
                <div
                  className="whitespace-pre-wrap font-serif text-[17px] sm:text-lg leading-[1.8] sm:leading-[1.9] tracking-[-0.01em] text-[var(--ink)]/90"
