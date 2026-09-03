@@ -73,6 +73,7 @@ export const items = pgTable("items", {
   author: text(),
   imageUrl: text("image_url"),
   thumbnailUrl: text("thumbnail_url"),
+  tags: text("tags").array(), 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
@@ -111,6 +112,15 @@ export const favorites = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.itemId] })],
 );
 
+export const apiTokens = pgTable("api_tokens", {
+  id: uuid().primaryKey().defaultRandom(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+});
+
 export const schema = {
   user,
   session,
@@ -120,4 +130,5 @@ export const schema = {
   collections,
   itemCollections,
   favorites,
+  apiTokens,
 };

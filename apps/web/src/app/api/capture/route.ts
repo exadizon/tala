@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
 import { db } from "@tala/database";
-import { items } from "@tala/database/src/schema";
+import { items, itemCollections } from "@tala/database/src/schema";
 import * as cheerio from "cheerio";
+import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
 
 interface Metadata {
   title: string | null;
@@ -10,9 +12,10 @@ interface Metadata {
   imageUrl: string | null;
   author: string | null;
   sourceDomain: string | null;
+  fullContent?: string | null;
 }
 
-async function extractMetadata(url: string): Promise<Metadata> {
+async function extractMetadata(url: string, expandContent: boolean = false): Promise<Metadata> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -46,13 +49,39 @@ async function extractMetadata(url: string): Promise<Metadata> {
       $('meta[property="article:author"]').attr("content");
 
     const domain = new URL(url).hostname;
+    
+    let fullContent = null;
+    let articleAuthor: string | undefined;
+    
+    // Only parse full readability content if this is marked as an "article" explicitly
+    if (expandContent) {
+      try {
+        const dom = new JSDOM(html, { url });
+        const reader = new Readability(dom.window.document);
+        const article = reader.parse();
+        if (article && article.textContent) {
+          // We could store HTML (article.content) or just raw text (article.textContent).
+          // Storing text is safer and easier to style initially, but optionally HTML structure is nice.
+          // Let's store textContent for a totally distraction-free reading experience.
+          fullContent = article.textContent.trim().replace(/\n{3,}/g, '\n\n'); 
+          
+          if (!author && article.byline) {
+             // Fallback author
+             articleAuthor = article.byline;
+          }
+        }
+      } catch (domErr) {
+        console.error("DOM Parse error:", domErr);
+      }
+    }
 
     return {
       title: title?.trim() || null,
       description: description?.trim() || null,
       imageUrl: imageUrl?.trim() || null,
-      author: author?.trim() || null,
+      author: (author || articleAuthor || null)?.trim() || null,
       sourceDomain: domain,
+      fullContent
     };
   } catch (error) {
     console.error("Error extracting metadata:", error);
@@ -71,7 +100,7 @@ export async function POST(request: NextRequest) {
     const session = await requireSession(request);
     const body = await request.json();
 
-    const { url, type = "url", content, note, title: customTitle } = body;
+    const { url, type = "url", content, note, title: customTitle, tags } = body;
 
     if (!url && type === "url") {
       return NextResponse.json(
@@ -86,11 +115,14 @@ export async function POST(request: NextRequest) {
       imageUrl: null,
       author: null,
       sourceDomain: null,
+      fullContent: null
     };
 
-    if (url && type === "url") {
-      metadata = await extractMetadata(url);
+    if (url && (type === "url" || type === "article")) {
+      metadata = await extractMetadata(url, type === "article");
     }
+
+    const finalContent = content || metadata.fullContent || metadata.description;
 
     const [newItem] = await db
       .insert(items)
@@ -99,13 +131,14 @@ export async function POST(request: NextRequest) {
         type,
         title: customTitle || metadata.title,
         url,
-        content,
+        content: finalContent,
         note,
         sourceUrl: url,
         sourceDomain: metadata.sourceDomain,
         author: metadata.author,
         imageUrl: metadata.imageUrl,
         thumbnailUrl: metadata.imageUrl,
+        tags: Array.isArray(tags) ? tags : [],
       })
       .returning();
 
@@ -118,3 +151,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

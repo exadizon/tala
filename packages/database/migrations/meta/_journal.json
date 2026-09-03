@@ -29,6 +29,13 @@
       "when": 1788334365337,
       "tag": "0003_fearless_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788340896468,
+      "tag": "0004_workable_mandroid",
+      "breakpoints": true
     }
   ]
 }

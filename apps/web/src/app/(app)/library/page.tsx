@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { TalaStarIcon } from "@/components/Logo";
 import {
   Search,
@@ -24,6 +25,7 @@ import {
   Edit3,
   MessageSquare,
   Share2,
+  Tag,
 } from "lucide-react";
 
 interface Item {
@@ -38,6 +40,7 @@ interface Item {
   author: string | null;
   imageUrl: string | null;
   thumbnailUrl: string | null;
+  tags?: string[];
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -48,12 +51,14 @@ export default function LibraryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "url" | "article" | "note" | "favorites">("all");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "title">("newest");
 
   // Capture bar state
   const [captureUrl, setCaptureUrl] = useState("");
   const [captureNote, setCaptureNote] = useState("");
+  const [captureTags, setCaptureTags] = useState("");
   const [captureType, setCaptureType] = useState<"url" | "article" | "note">("url");
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -63,6 +68,7 @@ export default function LibraryPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editTags, setEditTags] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const fetchItemsAndFavorites = useCallback(async () => {
@@ -108,11 +114,15 @@ export default function LibraryPage() {
 
   const handleCapture = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!captureUrl.trim()) return;
+    if (!captureUrl.trim() && captureType !== "note") return;
+    if (captureType === "note" && !captureNote.trim()) return;
 
     setIsCapturing(true);
     try {
-      const normalizedUrl = captureUrl.startsWith("http") ? captureUrl : `https://${captureUrl}`;
+      const normalizedUrl = captureUrl.startsWith("http") ? captureUrl : (captureUrl ? `https://${captureUrl}` : undefined);
+      
+      const parsedTags = captureTags.split(",").map(t => t.trim().replace(/^#/, "")).filter(Boolean);
+
       const response = await fetch("/api/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -120,12 +130,14 @@ export default function LibraryPage() {
           url: normalizedUrl,
           type: captureType,
           note: captureNote.trim() || undefined,
+          tags: parsedTags.length > 0 ? parsedTags : undefined,
         }),
       });
 
       if (response.ok) {
         setCaptureUrl("");
         setCaptureNote("");
+        setCaptureTags("");
         setShowNoteInput(false);
         await fetchItemsAndFavorites();
       }
@@ -149,18 +161,13 @@ export default function LibraryPage() {
     });
 
     try {
-      if (isFav) {
-        await fetch(`/api/favorites?itemId=${itemId}`, { method: "DELETE" });
-      } else {
-        await fetch("/api/favorites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ itemId }),
-        });
-      }
+      await fetch("/api/favorites", {
+        method: isFav ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
     } catch (error) {
-      console.error("Error toggling favorite:", error);
-      // Revert on error
+      // Revert optimistic update on failure
       setFavoriteIds((prev) => {
         const next = new Set(prev);
         if (isFav) next.add(itemId);
@@ -170,58 +177,63 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDelete = async (id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!confirm("Are you sure you want to remove this item from your sanctuary?")) return;
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this item?")) return;
 
     try {
-      await fetch(`/api/items/${id}`, { method: "DELETE" });
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
+      const response = await fetch(`/api/items/${id}`, {
+        method: "DELETE",
       });
+
+      if (response.ok) {
+        // Optimistic delete
+        setItems(items.filter((i) => i.id !== id));
+      }
     } catch (error) {
       console.error("Error deleting item:", error);
     }
   };
 
-  const handleCopy = (url: string, id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!url) return;
-    navigator.clipboard.writeText(url);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const copyToClipboard = async (text: string, id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy", err);
+    }
   };
 
-  const handleOpenEdit = (item: Item, e?: React.MouseEvent) => {
-    e?.stopPropagation();
+  const openEditor = (item: Item, e: React.MouseEvent) => {
+    e.stopPropagation();
     setEditingItem(item);
     setEditTitle(item.title || "");
     setEditNote(item.note || "");
+    setEditTags(item.tags?.join(", ") || "");
   };
 
   const handleSaveEdit = async () => {
     if (!editingItem) return;
     setIsSavingEdit(true);
+
     try {
+      const parsedTags = editTags.split(",").map(t => t.trim().replace(/^#/, "")).filter(Boolean);
+
       const response = await fetch(`/api/items/${editingItem.id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...editingItem,
-          title: editTitle,
-          note: editNote,
+          title: editTitle.trim() || undefined,
+          note: editNote.trim() || undefined,
+          tags: parsedTags,
         }),
       });
 
       if (response.ok) {
-        const updated = await response.json();
-        setItems((prev) =>
-          prev.map((item) => (item.id === editingItem.id ? updated.item : item))
-        );
         setEditingItem(null);
+        await fetchItemsAndFavorites();
       }
     } catch (error) {
       console.error("Error updating item:", error);
@@ -230,190 +242,215 @@ export default function LibraryPage() {
     }
   };
 
-  // Filtered and sorted items
-  const filteredItems = useMemo(() => {
-    return items
-      .filter((item) => {
-        // Filter tabs
-        if (activeFilter === "favorites") {
-          if (!favoriteIds.has(item.id)) return false;
-        } else if (activeFilter !== "all") {
-          if (item.type !== activeFilter) return false;
-        }
-
-        // Search query
-        if (!searchQuery.trim()) return true;
-        const q = searchQuery.toLowerCase();
-        return (
-          item.title?.toLowerCase().includes(q) ||
-          item.url?.toLowerCase().includes(q) ||
-          item.note?.toLowerCase().includes(q) ||
-          item.sourceDomain?.toLowerCase().includes(q) ||
-          item.content?.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
-        if (sortBy === "newest") {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        }
-        if (sortBy === "oldest") {
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        }
-        if (sortBy === "title") {
-          return (a.title || "").localeCompare(b.title || "");
-        }
-        return 0;
-      });
-  }, [items, favoriteIds, activeFilter, searchQuery, sortBy]);
-
-  const formatDate = (dateValue: string | Date) => {
+  const formatDate = (dateString: string | Date) => {
     try {
-      const d = new Date(dateValue);
-      return d.toLocaleDateString("en-US", {
+      return new Intl.DateTimeFormat("en-US", {
         month: "short",
         day: "numeric",
-        year: "numeric",
-      });
+        year: "numeric"
+      }).format(new Date(dateString));
     } catch {
       return "";
     }
   };
 
+  const getDomainLabel = (url: string | null, domain: string | null) => {
+    if (domain) return domain;
+    if (url) {
+      try {
+        return new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        return "link";
+      }
+    }
+    return "note";
+  };
+
+  const getFaviconUrl = (url: string | null) => {
+    if (!url) return null;
+    try {
+      const { hostname } = new URL(url);
+      return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+    } catch {
+      return null;
+    }
+  };
+
+  // Derive unique tags from items
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    items.forEach(item => {
+      item.tags?.forEach(tag => tags.add(tag));
+    });
+    return Array.from(tags).sort();
+  }, [items]);
+
+  // Filter and Sort Logic
+  const filteredAndSortedItems = items
+    .filter((item) => {
+      if (activeFilter === "favorites") {
+        if (!favoriteIds.has(item.id)) return false;
+      } else if (activeFilter !== "all" && item.type !== activeFilter) {
+        return false;
+      }
+      
+      if (activeTag && !(item.tags?.includes(activeTag))) {
+        return false;
+      }
+
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        item.title?.toLowerCase().includes(q) ||
+        item.url?.toLowerCase().includes(q) ||
+        item.note?.toLowerCase().includes(q) ||
+        item.tags?.some(tag => tag.toLowerCase().includes(q)) ||
+        item.content?.toLowerCase().includes(q) ||
+        item.sourceDomain?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (sortBy === "newest") {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (sortBy === "oldest") {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === "title") {
+        return (a.title || "").localeCompare(b.title || "");
+      }
+      return 0;
+    });
+
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-[var(--faint)] pb-4">
-        <div>
-          <h1 className="font-serif text-3xl sm:text-4xl font-normal text-[var(--ink)] tracking-tight">
-            Library
-          </h1>
-          <p className="text-xs sm:text-sm text-[var(--muted)] font-sans mt-0.5">
-            Your collected readings, references, and reflections
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs font-mono text-[var(--muted)]">
-          <span className="px-2 py-0.5 rounded-full bg-[var(--panel)] border border-[var(--faint)]">
-            {items.length} {items.length === 1 ? "entry" : "entries"} total
-          </span>
-        </div>
-      </div>
-
-      {/* Quick Capture Bar */}
-      <div className="rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-4 sm:p-5 shadow-card transition-all">
-        <form onSubmit={handleCapture} className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="relative flex-1">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
-                <Globe className="w-4 h-4" />
+    <div className="space-y-8 animate-fade-in relative z-0">
+      {/* Search and Capture Bar */}
+      <div className="sticky top-14 z-20 max-w-4xl mx-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+        <form onSubmit={handleCapture} className="relative group">
+          <div className="flex items-start lg:items-center bg-[var(--paper)] rounded-2xl border border-[var(--faint)] shadow-lift p-2 transition-all focus-within:border-[var(--accent)] focus-within:shadow-card">
+            
+            <div className="flex-1 flex flex-col justify-center min-w-[200px]">
+              <div className="flex items-center">
+                <Search className="min-w-4 w-4 h-4 text-[var(--muted)] ml-3 hidden sm:block" />
+                <input
+                  type="text"
+                  value={captureUrl}
+                  onChange={(e) => setCaptureUrl(e.target.value)}
+                  placeholder={captureType === 'note' ? "Start typing a note..." : "Paste a URL or search..."}
+                  className="w-full bg-transparent border-none focus:ring-0 text-[15px] px-3 sm:px-4 py-2 sm:py-3 font-sans placeholder:text-[var(--muted)] text-[var(--ink)]"
+                />
               </div>
-              <input
-                type="text"
-                value={captureUrl}
-                onChange={(e) => setCaptureUrl(e.target.value)}
-                placeholder="Paste article URL, bookmark link, or reference..."
-                className="w-full rounded-xl border border-[var(--faint)] bg-[var(--bg)] pl-10 pr-24 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/60 focus:border-[var(--accent)] transition-all font-sans"
-              />
-              {detectedDomain && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/20">
-                    {detectedDomain}
-                  </span>
-                </div>
-              )}
-            </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNoteInput(!showNoteInput)}
-                className={`px-3 py-2.5 rounded-xl border text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  showNoteInput || captureNote
-                    ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
-                    : "border-[var(--faint)] bg-[var(--bg)] text-[var(--muted)] hover:text-[var(--ink)]"
-                }`}
-                title="Add an annotation or note"
+              {/* Expandable note/tags section */}
+              <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showNoteInput ? "max-h-48 opacity-100" : "max-h-0 opacity-0"}`}>
+                <div className="px-3 sm:px-4 pb-3 flex flex-col gap-2">
+                  <textarea
+                    placeholder="Add a remark (optional)"
+                    value={captureNote}
+                    onChange={(e) => setCaptureNote(e.target.value)}
+                    rows={2}
+                    className="w-full bg-[var(--bg)] border border-[var(--faint)] rounded-xl focus:ring-0 focus:border-[var(--accent)] text-sm px-3 py-2 font-sans placeholder:text-[var(--muted)] text-[var(--ink)] resize-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Tags (comma separated, e.g. ai, design)"
+                    value={captureTags}
+                    onChange={(e) => setCaptureTags(e.target.value)}
+                    className="w-full bg-[var(--bg)] border border-[var(--faint)] rounded-xl focus:ring-0 focus:border-[var(--accent)] text-sm px-3 py-1.5 font-sans placeholder:text-[var(--muted)] text-[var(--ink)]"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-1 sm:gap-2 px-2 pb-2 lg:pb-0 shrink-0 self-end lg:self-center ml-auto">
+              {(captureUrl || captureType === "note") && (
+                <button
+                  type="button"
+                  onClick={() => setShowNoteInput(!showNoteInput)}
+                  className={`hidden sm:flex text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors ${
+                    showNoteInput 
+                      ? "bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]/20" 
+                      : "bg-[var(--bg)] text-[var(--muted)] border-[var(--faint)] hover:text-[var(--ink)]"
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                  Note
+                </button>
+              )}
+              
+              <div className="h-6 w-px bg-[var(--faint)] hidden sm:block mx-1"></div>
+              
+              <select
+                value={captureType}
+                onChange={(e) => setCaptureType(e.target.value as any)}
+                className="bg-[var(--panel)] border border-[var(--faint)] text-xs text-[var(--ink)] rounded-lg px-2 sm:px-3 py-1.5 focus:outline-none focus:border-[var(--accent)] cursor-pointer"
               >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Note</span>
-              </button>
+                <option value="url">Link</option>
+                <option value="article">Article</option>
+                <option value="note">Note</option>
+              </select>
 
               <button
                 type="submit"
-                disabled={isCapturing || !captureUrl.trim()}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-sm font-medium shadow-xs hover:opacity-95 active:scale-[0.98] disabled:opacity-40 transition-all cursor-pointer"
+                disabled={isCapturing || (!captureUrl.trim() && captureType !== "note")}
+                className="bg-[var(--ink)] text-[var(--paper)] rounded-xl px-3 sm:px-5 py-2 font-medium shadow-xs hover:opacity-90 disabled:opacity-50 transition-all flex items-center gap-1.5 cursor-pointer ml-1"
               >
-                {isCapturing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Capturing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" />
-                    <span>Capture</span>
-                  </>
-                )}
+                {isCapturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span className="hidden sm:inline">Save</span>
               </button>
             </div>
           </div>
-
-          {/* Optional Annotation Field */}
-          {showNoteInput && (
-            <div className="pt-2 animate-fade-in">
-              <textarea
-                value={captureNote}
-                onChange={(e) => setCaptureNote(e.target.value)}
-                placeholder="Add a thought, note, or quote to accompany this capture..."
-                rows={2}
-                className="w-full rounded-xl border border-[var(--faint)] bg-[var(--bg)] p-3 text-xs sm:text-sm text-[var(--ink)] placeholder:text-[var(--muted)]/60 focus:border-[var(--accent)] transition-all font-sans resize-none"
-              />
+          
+          {detectedDomain && captureType !== "note" && (
+            <div className="absolute -bottom-8 left-6 flex items-center gap-1.5 text-xs font-mono text-[var(--muted)] bg-[var(--paper)]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-[var(--faint)] shadow-xs animate-fade-in z-20">
+              <Globe className="w-3 h-3" />
+              <span>Saving to: {detectedDomain}</span>
             </div>
           )}
         </form>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+      {/* Toolbar & Filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 md:pb-0 hide-scrollbar rounded-lg border border-[var(--faint)] p-1 bg-[var(--paper)] max-w-full">
           {[
-            { id: "all", label: "All Items" },
-            { id: "favorites", label: "Starred" },
+            { id: "all", label: "All" },
+            { id: "favorites", label: "Stars", icon: Star },
             { id: "url", label: "Links" },
-            { id: "article", label: "Articles" },
+            { id: "article", label: "Reader" },
             { id: "note", label: "Notes" },
-          ].map((tab) => {
-            const isActive = activeFilter === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveFilter(tab.id as typeof activeFilter)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
-                  isActive
-                    ? "bg-[var(--ink)] text-[var(--bg)] shadow-xs"
-                    : "border border-[var(--faint)] bg-[var(--paper)] text-[var(--muted)] hover:text-[var(--ink)] hover:border-[var(--faint-strong)]"
-                }`}
-              >
-                {tab.id === "favorites" && (
-                  <Star className={`w-3 h-3 inline-block mr-1.5 ${isActive ? "fill-current" : ""}`} />
-                )}
-                {tab.label}
-              </button>
-            );
-          })}
+          ].map((filter) => (
+            <button
+              key={filter.id}
+              onClick={() => setActiveFilter(filter.id as any)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 select-none ${
+                activeFilter === filter.id
+                  ? "bg-[var(--panel)] text-[var(--ink)] shadow-xs"
+                  : "text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)]"
+              }`}
+            >
+              {filter.icon && <filter.icon className="w-3.5 h-3.5" />}
+              {filter.label}
+              <span className="opacity-40 text-[10px]">
+                {filter.id === "all"
+                  ? items.length
+                  : filter.id === "favorites"
+                  ? items.filter((i) => favoriteIds.has(i.id)).length
+                  : items.filter((i) => i.type === filter.id).length}
+              </span>
+            </button>
+          ))}
         </div>
 
-        {/* Search, Sort, and View Controls */}
-        <div className="flex items-center gap-2">
-          {/* Search Box */}
-          <div className="relative flex-1 md:w-60">
+        <div className="flex items-center gap-2 self-end md:self-auto w-full md:w-auto">
+          {/* Quick Search Box (fallback if not using main bar) */}
+          <div className="relative w-full md:w-48">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search library..."
+              placeholder="Find..."
               className="w-full rounded-lg border border-[var(--faint)] bg-[var(--paper)] pl-8.5 pr-7 py-1.5 text-xs text-[var(--ink)] placeholder:text-[var(--muted)]/60 focus:border-[var(--accent)]"
             />
             {searchQuery && (
@@ -426,29 +463,25 @@ export default function LibraryPage() {
             )}
           </div>
 
-          {/* View Mode Toggle */}
-          <div className="flex items-center rounded-lg border border-[var(--faint)] bg-[var(--paper)] p-0.5 shadow-2xs">
+          <div className="h-6 w-px bg-[var(--faint)] hidden sm:block"></div>
+
+          {/* View Toggles */}
+          <div className="hidden sm:flex items-center gap-0.5 border border-[var(--faint)] bg-[var(--paper)] rounded-lg p-0.5">
             <button
               onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                viewMode === "grid"
-                  ? "bg-[var(--panel)] text-[var(--ink)]"
-                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                viewMode === "grid" ? "bg-[var(--panel)] text-[var(--ink)] shadow-xs" : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
               title="Grid View"
-              aria-label="Grid View"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                viewMode === "list"
-                  ? "bg-[var(--panel)] text-[var(--ink)]"
-                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                viewMode === "list" ? "bg-[var(--panel)] text-[var(--ink)] shadow-xs" : "text-[var(--muted)] hover:text-[var(--ink)]"
               }`}
               title="List View"
-              aria-label="List View"
             >
               <ListIcon className="w-3.5 h-3.5" />
             </button>
@@ -456,138 +489,150 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {/* Main Items Display */}
+      {allTags.length > 0 && (
+         <div className="flex items-center flex-wrap gap-1.5 pt-2">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] mr-1">Tags:</span>
+            {allTags.map(tag => (
+              <button
+                 key={tag}
+                 onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition-colors border ${
+                   activeTag === tag 
+                    ? "bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)]" 
+                    : "bg-[var(--panel)] text-[var(--ink)] border-[var(--faint)] hover:border-[var(--accent)]/50"
+                 }`}
+              >
+                <Tag className="w-3 h-3" />
+                {tag}
+              </button>
+            ))}
+         </div>
+      )}
+
+      {/* Content Grid/List */}
       {isLoading ? (
         <div className="py-24 text-center space-y-3">
           <Loader2 className="w-6 h-6 animate-spin mx-auto text-[var(--accent)]" />
           <p className="text-xs font-mono text-[var(--muted)] uppercase tracking-wider">
-            Fetching your sanctuary...
+            Loading library...
           </p>
         </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[var(--faint)] bg-[var(--paper)]/40 p-12 text-center space-y-4">
+      ) : filteredAndSortedItems.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--faint)] bg-[var(--paper)]/40 p-12 text-center space-y-4 max-w-2xl mx-auto mt-8">
           <div className="w-12 h-12 rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center mx-auto shadow-xs">
-            <TalaStarIcon className="w-6 h-6" />
+            {searchQuery || activeTag ? <Search className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
           </div>
-          <div className="max-w-md mx-auto space-y-1.5">
+          <div className="space-y-1.5">
             <h3 className="font-serif text-lg font-medium text-[var(--ink)]">
-              {searchQuery
-                ? "No entries match your search"
-                : activeFilter === "favorites"
-                ? "No starred items yet"
-                : "Your sanctuary is ready"}
+              {(searchQuery || activeTag) ? "No matches found" : "Your library is empty"}
             </h3>
             <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-              {searchQuery
-                ? `Try searching with different terms or clear the filter.`
-                : activeFilter === "favorites"
-                ? `Star your most cherished articles and bookmarks to display them here.`
-                : `Paste any article link, newsletter, or quote above to start building your library.`}
+              {(searchQuery || activeTag)
+                ? "Try a different search term or clear your filters."
+                : "Capture your first article, video, or inspiration using the bar above."}
             </p>
           </div>
         </div>
       ) : viewMode === "grid" ? (
-        /* GRID VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {filteredItems.map((item) => {
-            const isFav = favoriteIds.has(item.id);
-            const isCopied = copiedId === item.id;
+        // Grid View
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 items-start">
+          {filteredAndSortedItems.map((item) => (
+            <div
+              key={item.id}
+              className="group relative flex flex-col h-full rounded-2xl border border-[var(--faint)] bg-[var(--paper)] overflow-hidden hover:border-[var(--faint-strong)] hover:shadow-card transition-all"
+            >
+              {/* Card Image */}
+              {item.imageUrl && (
+                <div className="relative aspect-video w-full overflow-hidden bg-[var(--panel)] border-b border-[var(--faint)]">
+                  <img
+                    src={item.imageUrl}
+                    alt={item.title || "Preview"}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                </div>
+              )}
 
-            return (
-              <div
-                key={item.id}
-                onClick={() => handleOpenEdit(item)}
-                className="group relative rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-5 flex flex-col justify-between hover:border-[var(--faint-strong)] hover:shadow-card transition-all cursor-pointer overflow-hidden"
-              >
-                {/* Top Row: Domain / Type badge & Star button */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    {item.sourceDomain ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-[var(--panel)] text-[var(--muted)] border border-[var(--faint)] truncate">
-                        <Globe className="w-3 h-3 shrink-0 text-[var(--accent)]" />
-                        <span className="truncate">{item.sourceDomain}</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono uppercase tracking-wider bg-[var(--panel)] text-[var(--muted)] border border-[var(--faint)]">
-                        {item.type}
-                      </span>
-                    )}
+              <div className="flex flex-col flex-1 p-5">
+                {/* Meta Header */}
+                <div className="flex justify-between items-start mb-3 gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--muted)] bg-[var(--panel)] px-2 py-0.5 rounded-md border border-[var(--faint)] max-w-full overflow-hidden">
+                    {item.type === "url" && <Globe className="w-3 h-3 shrink-0" />}
+                    {item.type === "article" && <FileText className="w-3 h-3 shrink-0" />}
+                    {item.type === "note" && <Edit3 className="w-3 h-3 shrink-0" />}
+                    <span className="truncate">
+                      {getDomainLabel(item.url, item.sourceDomain)}
+                    </span>
                   </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
+                  
+                  <div className="flex items-center gap-1 -mr-2">
                     <button
                       onClick={(e) => handleToggleFavorite(item.id, e)}
-                      className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-                        isFav
-                          ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
-                          : "border-transparent text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)]"
+                      className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer ${
+                        favoriteIds.has(item.id)
+                          ? "opacity-100 text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                          : "text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)]"
                       }`}
-                      title={isFav ? "Starred in favorites" : "Star this item"}
-                      aria-label="Star item"
+                      aria-label="Toggle favorite"
                     >
-                      <Star
-                        className={`w-3.5 h-3.5 ${isFav ? "fill-[var(--accent)]" : ""}`}
-                      />
+                      <TalaStarIcon className="w-4 h-4" glow={favoriteIds.has(item.id)} />
                     </button>
+                    {(item.type === "url" || item.type === "article") && item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[var(--panel)] cursor-pointer"
+                        title="Open external link"
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                      </a>
+                    )}
                   </div>
                 </div>
 
-                {/* Main Content Area */}
-                <div className="space-y-2.5 mb-4 flex-1">
-                  <h3 className="font-serif text-base font-medium text-[var(--ink)] group-hover:text-[var(--accent)] transition-colors line-clamp-2 leading-snug">
+                {/* Title & Note */}
+                <Link href={`/items/${item.id}`} className="group/link flex-1 block">
+                  <h3 className="font-serif text-[17px] font-medium leading-snug tracking-tight text-[var(--ink)] line-clamp-2 mb-2 group-hover/link:text-[var(--accent)] transition-colors">
                     {item.title || "Untitled Capture"}
                   </h3>
-
                   {item.note && (
-                    <div className="p-2.5 rounded-lg border border-[var(--faint)] bg-[var(--bg)]/60">
-                      <p className="font-serif italic text-xs text-[var(--muted)] line-clamp-3">
-                        &ldquo;{item.note}&rdquo;
-                      </p>
-                    </div>
-                  )}
-
-                  {item.url && (
-                    <p className="font-mono text-[11px] text-[var(--muted)] truncate">
-                      {item.url}
+                    <p className="font-sans text-[13px] text-[var(--muted)] line-clamp-3 leading-relaxed mb-4">
+                      {item.note}
                     </p>
                   )}
-                </div>
+                  {!item.note && item.content && item.type === "note" && (
+                    <p className="font-sans text-[13px] text-[var(--muted)] line-clamp-3 leading-relaxed mb-4">
+                      {item.content}
+                    </p>
+                  )}
+                  
+                  {item.tags && item.tags.length > 0 && (
+                     <div className="flex flex-wrap gap-1.5 mt-3 mb-1">
+                        {item.tags.map((tag) => (
+                          <span key={tag} className="px-1.5 py-0.5 bg-[var(--panel)] border text-[var(--muted)] border-[var(--faint)] rounded text-[10px] uppercase font-mono tracking-wider truncate max-w-[120px]">
+                            {tag}
+                          </span>
+                        ))}
+                     </div>
+                  )}
+                </Link>
 
-                {/* Bottom Footer Actions */}
-                <div className="pt-3 border-t border-[var(--faint)] flex items-center justify-between text-xs text-[var(--muted)] font-mono">
-                  <span className="text-[10px] uppercase tracking-wider">
-                    {formatDate(item.createdAt)}
-                  </span>
-
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                    {item.url && (
-                      <>
-                        <button
-                          onClick={(e) => handleCopy(item.url!, item.id, e)}
-                          className="p-1 rounded hover:bg-[var(--panel)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                          title={isCopied ? "Copied to clipboard!" : "Copy link"}
-                        >
-                          {isCopied ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-1 rounded hover:bg-[var(--panel)] hover:text-[var(--accent)] transition-colors"
-                          title="Open original website"
-                        >
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        </a>
-                      </>
-                    )}
+                {/* Footer Meta & Actions */}
+                <div className="pt-4 mt-auto border-t border-[var(--faint)] flex items-center justify-between text-[11px] font-mono text-[var(--muted)]">
+                  <span>{formatDate(item.createdAt)}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => openEditor(item, e)}
+                      className="p-1 rounded text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
+                      title="Quick Edit"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={(e) => handleDelete(item.id, e)}
-                      className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
+                      className="p-1 rounded text-[var(--muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
                       title="Delete item"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -595,194 +640,171 @@ export default function LibraryPage() {
                   </div>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       ) : (
-        /* LIST VIEW */
-        <div className="rounded-2xl border border-[var(--faint)] bg-[var(--paper)] divide-y divide-[var(--faint)] overflow-hidden shadow-card">
-          {filteredItems.map((item) => {
-            const isFav = favoriteIds.has(item.id);
-            const isCopied = copiedId === item.id;
-
-            return (
-              <div
-                key={item.id}
-                onClick={() => handleOpenEdit(item)}
-                className="group p-3.5 sm:p-4 hover:bg-[var(--paper-hover)] flex items-center justify-between gap-4 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <button
-                    onClick={(e) => handleToggleFavorite(item.id, e)}
-                    className={`p-1.5 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                      isFav
-                        ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
-                        : "border-transparent text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)]"
-                    }`}
-                    title={isFav ? "Starred" : "Star"}
-                  >
-                    <Star
-                      className={`w-3.5 h-3.5 ${isFav ? "fill-[var(--accent)]" : ""}`}
-                    />
-                  </button>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {item.sourceDomain && (
-                        <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-[var(--panel)] text-[var(--muted)] border border-[var(--faint)] shrink-0">
-                          {item.sourceDomain}
-                        </span>
-                      )}
-                      <h3 className="font-serif text-sm font-medium text-[var(--ink)] group-hover:text-[var(--accent)] truncate">
-                        {item.title || "Untitled Capture"}
-                      </h3>
-                    </div>
-
-                    {item.note && (
-                      <p className="font-serif italic text-xs text-[var(--muted)] truncate">
-                        &ldquo;{item.note}&rdquo;
-                      </p>
-                    )}
-                  </div>
+        // List View
+        <div className="flex flex-col gap-2 relative">
+          {filteredAndSortedItems.map((item) => (
+            <div
+              key={item.id}
+              className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-3 px-4 rounded-xl border border-transparent hover:border-[var(--faint)] hover:bg-[var(--paper)] hover:shadow-xs transition-all"
+            >
+              <div className="flex flex-1 items-center gap-4 min-w-0">
+                {/* Visual Icon per type */}
+                <div className="hidden sm:flex shrink-0 w-10 h-10 rounded-lg bg-[var(--panel)] border border-[var(--faint)] items-center justify-center">
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt="" className="w-full h-full object-cover rounded-lg" />
+                  ) : item.type === "url" || item.type === "article" ? (
+                    item.url && getFaviconUrl(item.url) ? (
+                      <img src={getFaviconUrl(item.url)!} alt="" className="w-4 h-4 opacity-70" />
+                    ) : (
+                      <Globe className="w-4 h-4 text-[var(--muted)]" />
+                    )
+                  ) : (
+                    <FileText className="w-4 h-4 text-[var(--muted)]" />
+                  )}
                 </div>
-
-                {/* List Row Meta & Actions */}
-                <div className="flex items-center gap-3 shrink-0 text-xs font-mono text-[var(--muted)]">
-                  <span className="hidden sm:inline text-[11px]">
-                    {formatDate(item.createdAt)}
-                  </span>
-
-                  <div className="flex items-center gap-1">
-                    {item.url && (
-                      <>
-                        <button
-                          onClick={(e) => handleCopy(item.url!, item.id, e)}
-                          className="p-1 rounded hover:bg-[var(--panel)] hover:text-[var(--ink)] cursor-pointer"
-                          title="Copy link"
-                        >
-                          {isCopied ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-1 rounded hover:bg-[var(--panel)] hover:text-[var(--accent)]"
-                          title="Open original link"
-                        >
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        </a>
-                      </>
+                
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <Link href={`/items/${item.id}`} className="truncate">
+                      <span className="font-serif font-medium text-[15px] sm:text-[16px] text-[var(--ink)] hover:text-[var(--accent)] transition-colors truncate block">
+                        {item.title || "Untitled Capture"}
+                      </span>
+                    </Link>
+                  </div>
+                  <div className="flex items-center flex-wrap gap-2 text-[11px] font-mono text-[var(--muted)]">
+                    <span className="bg-[var(--panel)] border border-[var(--faint)] px-1.5 py-0.5 rounded text-[10px]">
+                      {getDomainLabel(item.url, item.sourceDomain)}
+                    </span>
+                    <span className="hidden sm:inline-block text-[var(--faint-strong)]">•</span>
+                    <span className="hidden sm:inline-block">{formatDate(item.createdAt)}</span>
+                    
+                    {item.tags && item.tags.length > 0 && (
+                      <div className="hidden lg:flex items-center gap-1.5 ml-2 border-l border-[var(--faint)] pl-2">
+                        {item.tags.map((tag) => (
+                          <span key={tag} className="text-xs text-[var(--muted)]">#{tag}</span>
+                        ))}
+                      </div>
                     )}
-                    <button
-                      onClick={(e) => handleDelete(item.id, e)}
-                      className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 cursor-pointer"
-                      title="Delete item"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
               </div>
-            );
-          })}
+              
+              <div className="flex items-center gap-2 sm:gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                <button
+                  onClick={(e) => handleToggleFavorite(item.id, e)}
+                  className={`p-2 sm:p-1.5 rounded-lg transition-all ${
+                    favoriteIds.has(item.id)
+                      ? "text-[var(--accent)] bg-[var(--accent-soft)]"
+                      : "text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)]"
+                  }`}
+                >
+                  <TalaStarIcon className="w-4 h-4" glow={favoriteIds.has(item.id)} />
+                </button>
+                <button
+                  onClick={(e) => openEditor(item, e)}
+                  className="p-2 sm:p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
+                  title="Quick Edit"
+                >
+                  <Edit3 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                </button>
+                  <div className="flex items-center gap-1">
+                    {(item.type === "url" || item.type === "article") && item.url && (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2 sm:p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
+                        title="Open original"
+                      >
+                        <ArrowUpRight className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    onClick={(e) => handleDelete(item.id, e)}
+                    className="p-2 sm:p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors ml-1 cursor-pointer"
+                    title="Delete item"
+                  >
+                    <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                  </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Edit / Detail Modal */}
+      {/* Edit Item Modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-6 shadow-lift space-y-5 animate-fade-in">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--faint)] pb-3">
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--accent)]">
-                  Edit Sanctuary Entry
-                </span>
-                <h2 className="font-serif text-lg font-medium text-[var(--ink)]">
-                  Captured Item Details
-                </h2>
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--faint)] bg-[var(--paper)] p-6 shadow-lift animate-fade-in">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-[var(--faint)]">
+              <h3 className="font-serif font-medium text-lg text-[var(--ink)] tracking-tight">Quick Edit</h3>
               <button
                 onClick={() => setEditingItem(null)}
-                className="p-1 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] cursor-pointer"
+                className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--panel)] transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-
+            
             <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] pl-1">
                   Title
                 </label>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--accent)]"
-                  placeholder="Item title"
+                  className="w-full rounded-xl border border-[var(--faint)] bg-[var(--bg)] px-4 py-2.5 text-sm font-medium text-[var(--ink)] focus:border-[var(--accent)]"
+                  placeholder="Capture title"
                 />
               </div>
-
-              {editingItem.url && (
-                <div className="space-y-1">
-                  <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                    Original URL
-                  </label>
-                  <a
-                    href={editingItem.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline font-mono break-all"
-                  >
-                    <span>{editingItem.url}</span>
-                    <ArrowUpRight className="w-3 h-3 shrink-0" />
-                  </a>
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Personal Annotation / Note
+              
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] pl-1">
+                  Tags (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--faint)] bg-[var(--bg)] px-4 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)]"
+                  placeholder="design, architecture, ai..."
+                />
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] pl-1">
+                  Note
                 </label>
                 <textarea
                   value={editNote}
                   onChange={(e) => setEditNote(e.target.value)}
                   rows={4}
-                  className="w-full rounded-lg border border-[var(--faint)] bg-[var(--bg)] p-3 text-sm text-[var(--ink)] focus:border-[var(--accent)] font-serif italic resize-none"
-                  placeholder="Your personal note, excerpt, or reflections..."
+                  className="w-full rounded-xl border border-[var(--faint)] bg-[var(--bg)] px-4 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--accent)] resize-none"
+                  placeholder="Add your thoughts or summary..."
                 />
               </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-[var(--faint)]">
-              <button
-                type="button"
-                onClick={() => handleDelete(editingItem.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
-              >
-                Delete Entry
-              </button>
-
-              <div className="flex items-center gap-2">
+              
+              <div className="flex justify-end gap-2 pt-2">
                 <button
-                  type="button"
                   onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 rounded-lg border border-[var(--faint)] bg-[var(--paper)] text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--muted)] hover:bg-[var(--panel)] hover:text-[var(--ink)] transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
                   onClick={handleSaveEdit}
-                  disabled={isSavingEdit}
-                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-medium hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
+                  disabled={isSavingEdit || (!editTitle.trim() && editTitle !== editingItem.title)}
+                  className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-colors inline-flex items-center gap-2 shadow-xs cursor-pointer"
                 >
-                  {isSavingEdit ? "Saving..." : "Save Changes"}
+                  {isSavingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Changes
                 </button>
               </div>
             </div>

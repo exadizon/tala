@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TalaStarIcon } from "@/components/Logo";
+import { TagInput } from "@/components/TagInput";
 import {
   ArrowLeft,
   Globe,
@@ -17,8 +18,9 @@ import {
   Loader2,
   Save,
   Bookmark,
-  ArrowUpRight,
   Share2,
+  ArrowUpRight,
+  Tag
 } from "lucide-react";
 
 interface Item {
@@ -32,6 +34,7 @@ interface Item {
   sourceDomain: string | null;
   author: string | null;
   imageUrl: string | null;
+  tags?: string[];
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -54,6 +57,7 @@ export default function ItemReaderPage({
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
 
   const fetchItem = useCallback(async () => {
     try {
@@ -68,6 +72,7 @@ export default function ItemReaderPage({
       setEditTitle(data.item.title || "");
       setEditContent(data.item.content || "");
       setEditNote(data.item.note || "");
+      setEditTags(data.item.tags || []);
     } catch (error) {
       console.error("Error fetching item:", error);
     } finally {
@@ -90,6 +95,7 @@ export default function ItemReaderPage({
           title: editTitle.trim() || undefined,
           content: editContent.trim() || undefined,
           note: editNote.trim() || undefined,
+          tags: editTags,
         }),
       });
 
@@ -128,9 +134,9 @@ export default function ItemReaderPage({
   if (!item) return null;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 animate-fade-in pb-20">
+    <div className="max-w-3xl mx-auto space-y-8 animate-fade-in pb-20 mt-4 md:mt-8 px-2 md:px-0">
       {/* Top Nav */}
-      <div className="flex items-center justify-between border-b border-[var(--faint)] pb-4">
+      <div className="flex items-center justify-between border-[var(--faint)] pb-4 opacity-50 hover:opacity-100 transition-opacity">
         <button
           onClick={() => router.back()}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--ink)] transition-colors cursor-pointer"
@@ -187,6 +193,11 @@ export default function ItemReaderPage({
           </div>
 
           <div>
+            <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] pl-1 mb-1.5 block">Tags</label>
+            <TagInput tags={editTags} onChange={setEditTags} placeholder="Add a tag..." />
+          </div>
+
+          <div>
             <label className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] pl-1 mb-1.5 block">My Thoughts</label>
             <textarea
               value={editNote}
@@ -230,25 +241,38 @@ export default function ItemReaderPage({
       ) : (
         <article className="space-y-8">
           {/* Article Header */}
-          <header className="space-y-5 text-center">
-             <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] bg-[var(--panel)] px-2.5 py-1 rounded-md border border-[var(--faint)]">
-                {item.type === "url" && <Globe className="w-3 h-3" />}
-                {item.type === "article" && <FileText className="w-3 h-3" />}
-                {item.type === "note" && <Edit3 className="w-3 h-3" />}
-                <span>{item.type}</span>
-                {item.sourceDomain && (
-                  <>
-                    <span className="opacity-50">•</span>
-                    <span>{item.sourceDomain}</span>
-                  </>
-                )}
+          <header className="space-y-5">
+             <div className="flex items-center flex-wrap gap-2">
+               <div className="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] bg-[var(--panel)] px-2.5 py-1 rounded-md border border-[var(--faint)]">
+                  {item.type === "url" && <Globe className="w-3 h-3" />}
+                  {item.type === "article" && <FileText className="w-3 h-3" />}
+                  {item.type === "note" && <Edit3 className="w-3 h-3" />}
+                  <span>{item.type}</span>
+                  {item.sourceDomain && (
+                    <>
+                      <span className="opacity-50">•</span>
+                      <span>{item.sourceDomain}</span>
+                    </>
+                  )}
+               </div>
+               
+               {item.tags && item.tags.length > 0 && (
+                 <div className="flex items-center flex-wrap gap-1.5 ml-2">
+                   {item.tags.map(tag => (
+                     <Link key={tag} href={`/library?tag=${encodeURIComponent(tag)}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono text-[var(--ink)] bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] transition-colors">
+                       <Tag className="w-3 h-3" />
+                       {tag}
+                     </Link>
+                   ))}
+                 </div>
+               )}
              </div>
 
-            <h1 className="font-serif text-3xl sm:text-5xl font-medium tracking-tight text-[var(--ink)] leading-snug">
-              {item.title || "Untitled"}
+            <h1 className="font-serif text-4xl sm:text-5xl font-medium tracking-tight text-[var(--ink)] leading-snug">
+              {item.title || "Untitled Capture"}
             </h1>
 
-            <div className="flex items-center justify-center gap-4 text-xs font-sans text-[var(--muted)]">
+            <div className="flex items-center gap-4 text-xs font-sans text-[var(--muted)] border-b border-[var(--faint)] pb-6">
               {item.author && (
                 <div className="flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5" />
@@ -292,11 +316,13 @@ export default function ItemReaderPage({
           {/* Full content Reader */}
           <div className="prose prose-sm sm:prose-base dark:prose-invert prose-p:font-serif prose-p:leading-relaxed prose-headings:font-serif mx-auto max-w-none text-[var(--ink)] pb-12">
             {item.content ? (
-              <div className="whitespace-pre-wrap font-serif text-lg leading-[1.8] tracking-[-0.01em] text-[var(--ink)]/90">
+               <div
+                 className="whitespace-pre-wrap font-serif text-[17px] sm:text-lg leading-[1.8] sm:leading-[1.9] tracking-[-0.01em] text-[var(--ink)]/90"
+               >
                 {item.content}
-              </div>
+               </div>
             ) : item.type !== "note" ? (
-               <div className="py-12 text-center space-y-4 border-t border-[var(--faint)]">
+               <div className="py-12 text-center space-y-4 border-t border-[var(--faint)] opacity-60">
                  <div className="w-10 h-10 rounded-xl bg-[var(--panel)] border border-[var(--faint)] flex items-center justify-center mx-auto text-[var(--muted)]">
                    <ExternalLink className="w-4 h-4" />
                  </div>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
 import { db } from "@tala/database";
 import { items, itemCollections } from "@tala/database/src/schema";
-import { eq, desc, like, or, and, isNull } from "drizzle-orm";
+import { eq, desc, like, or, and, isNull, arrayContains } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get("q");
     const collectionId = searchParams.get("collectionId");
     const type = searchParams.get("type");
+    const tagsParam = searchParams.get("tags");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -18,6 +19,12 @@ export async function GET(request: NextRequest) {
       eq(items.userId, session.user.id),
       isNull(items.deletedAt),
     ];
+
+    if (tagsParam) {
+      const tags = tagsParam.split(',');
+      // Drizzle has arrayContains, but we can also use raw SQL if needed. Wait arrayContains is proper.
+      whereConditions.push(arrayContains(items.tags, tags));
+    }
 
     if (query) {
       whereConditions.push(
@@ -50,7 +57,7 @@ export async function GET(request: NextRequest) {
           sourceDomain: items.sourceDomain,
           author: items.author,
           imageUrl: items.imageUrl,
-          thumbnailUrl: items.thumbnailUrl,
+          thumbnailUrl: items.thumbnailUrl, tags: items.tags,
           createdAt: items.createdAt,
           updatedAt: items.updatedAt,
           deletedAt: items.deletedAt,
@@ -91,7 +98,7 @@ export async function POST(request: NextRequest) {
     const session = await requireSession(request);
     const body = await request.json();
 
-    const { type, title, url, content, note, sourceUrl, sourceDomain, author, imageUrl, thumbnailUrl, collectionId } = body;
+    const { type, title, url, content, note, sourceUrl, sourceDomain, author, imageUrl, thumbnailUrl, tags, collectionId } = body;
 
     if (!type) {
       return NextResponse.json(
@@ -114,6 +121,7 @@ export async function POST(request: NextRequest) {
         author,
         imageUrl,
         thumbnailUrl,
+        tags: tags || [],
       })
       .returning();
       
@@ -133,3 +141,8 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+
+
+
+
