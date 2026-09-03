@@ -8,6 +8,19 @@ const sql = neon(process.env.DATABASE_URL!);
 
 const db = drizzle({ client: sql, schema });
 
+function getBaseURL() {
+  if (process.env.BETTER_AUTH_URL) {
+    return process.env.BETTER_AUTH_URL;
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return "http://localhost:3000";
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -16,9 +29,10 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL: getBaseURL(),
   trustedOrigins: [
-    process.env.BETTER_AUTH_URL || "http://localhost:3000",
+    getBaseURL(),
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
   ],
 });
 
